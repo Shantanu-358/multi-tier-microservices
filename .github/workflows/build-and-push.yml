@@ -1,0 +1,93 @@
+name: Build and Push Microservices to ECR
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+env:
+  AWS_REGION: ap-south-2
+
+jobs:
+  detect-changes:
+    name: Detect Changed Services
+    runs-on: ubuntu-latest
+    outputs:
+      backend-api: ${{ steps.filter.outputs.backend-api }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+      
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Detect Changes
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters:
+            backend-api:
+              - 'backend-api/**'
+            frontend:
+              - 'frontend/**'
+
+  build-and-push:
+    name: Build & Push
+    needs: detect-changes
+    runs-on: ubuntu-latest
+    
+    permissions:
+      id-token: write
+      contents: read
+
+    strategy:
+      fail-fast: false # If one service fails, let the others finish building
+      matrix:
+        include:
+          - name: backend-api
+            path: ./backend-api
+            dockerfile: ./backend-api/Dockerfile
+            should_run: ${{ needs.detect-changes.outputs.backend-api }}
+          - name: frontend
+            path: ./frontend
+            dockerfile: ./frontend/Dockerfile
+            should_run: ${{ needs.detect-changes.outputs.frontend }}
+    
+    if: matrix.should_run == 'true' || github.event_name == 'workflow_dispatch'
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::526727148285:role/GithubActionsTerraformRole
+          aws-region: ${{ env.AWS_REGION }}
+      
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Extract Commit SHA
+        id: vars
+        run: echo "COMMIT_SHA=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+
+      - name: Build and Push Docker Image
+        env: 
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          SERVICE_NAME: ${{ matrix.name }}
+          BUILD_CONTEXT: ${{ matrix.path }}
+          DOCKERFILE: ${{ matrix.dockerfile }}
+        run: |
+          echo "Building image for ${SERVICE_NAME}..."
+          docker build -f ${DOCKERFILE} \
+            -t ${ECR_REGISTRY}/${SERVICE_NAME}:${{ env.COMMIT_SHA }} \
+            -t ${ECR_REGISTRY}/${SERVICE_NAME}:latest ${BUILD_CONTEXT}
+
+          echo "Pushing ${SERVICE_NAME} to Amazon ECR..."
+          docker push ${ECR_REGISTRY}/${SERVICE_NAME}:${{ env.COMMIT_SHA }}
+          docker push ${ECR_REGISTRY}/${SERVICE_NAME}:latest
