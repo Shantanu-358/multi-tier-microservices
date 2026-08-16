@@ -1,0 +1,45 @@
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Python / Backend
+backend-api/venv/
+backend-api/.venv/
+backend-api/__pycache__/
+backend-api/*/__pycache__/
+backend-api/*/*/__pycache__/
+backend-api/.pytest_cache/
+backend-api/*.pyc
+backend-api/*.pyo
+backend-api/*.pyd
+backend-api/.coverage
+backend-api/htmlcov/
+*.pyc
+__pycache__/
+
+# Node / Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/build/
+frontend/.vite/
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*
+node_modules/
+dist/
+
+# Logs
+*.log
+logs/
+
+# IDE / Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# OS generated files
+ehthumbs.db
