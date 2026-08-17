@@ -17,8 +17,7 @@ jobs:
     name: Detect Changed Services
     runs-on: ubuntu-latest
     outputs:
-      backend-api: ${{ steps.filter.outputs.backend-api }}
-      frontend: ${{ steps.filter.outputs.frontend }}
+      services: ${{ steps.filter.outputs.changes }}
       
     steps:
       - name: Checkout code
@@ -28,6 +27,8 @@ jobs:
         id: filter
         uses: dorny/paths-filter@v3
         with:
+          # On manual dispatch, force all services to match
+          list-files: shell
           filters: |
             backend-api:
               - 'backend-api/**'
@@ -37,6 +38,8 @@ jobs:
   build-and-push:
     name: Build & Push
     needs: detect-changes
+    # Run if any services changed OR if triggered manually
+    if: ${{ needs.detect-changes.outputs.services != '[]' && needs.detect-changes.outputs.services != '' || github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
     
     permissions:
@@ -46,18 +49,8 @@ jobs:
     strategy:
       fail-fast: false # If one service fails, let the others finish building
       matrix:
-        include:
-          - name: backend-api
-            path: ./backend-api
-            dockerfile: ./backend-api/Dockerfile
-            should_run: ${{ needs.detect-changes.outputs.backend-api }}
-          - name: frontend
-            path: ./frontend
-            dockerfile: ./frontend/Dockerfile
-            should_run: ${{ needs.detect-changes.outputs.frontend }}
-    
-    if: matrix.should_run == 'true' || github.event_name == 'workflow_dispatch'
-    
+        service: ${{ github.event_name == 'workflow_dispatch' && fromJSON('["backend-api", "frontend"]') || fromJSON(needs.detect-changes.outputs.services) }}
+
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -79,9 +72,9 @@ jobs:
       - name: Build and Push Docker Image
         env: 
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          SERVICE_NAME: ${{ matrix.name }}
-          BUILD_CONTEXT: ${{ matrix.path }}
-          DOCKERFILE: ${{ matrix.dockerfile }}
+          SERVICE_NAME: ${{ matrix.service }}
+          BUILD_CONTEXT: ./${{ matrix.service }}
+          DOCKERFILE: ./${{ matrix.service }}/Dockerfile
         run: |
           echo "Building image for ${SERVICE_NAME}..."
           docker build -f ${DOCKERFILE} \
@@ -102,7 +95,7 @@ jobs:
           GITOPS_PAT: ${{ secrets.GITOPS_REPO_PAT }}
           GITHUB_USER: "Shantanu-358"
           GITHUB_REPO: "gitops-manifests"
-          SERVICE_NAME: ${{ matrix.name }}
+          SERVICE_NAME: ${{ matrix.service }}
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
         run: |
           # 1. Clone Repo 3
