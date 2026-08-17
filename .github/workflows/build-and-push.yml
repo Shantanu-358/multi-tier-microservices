@@ -72,7 +72,7 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Extract Commit SHA
+      - name: Set Image Tag & Short SHA
         id: vars
         run: echo "COMMIT_SHA=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
 
@@ -91,3 +91,41 @@ jobs:
           echo "Pushing ${SERVICE_NAME} to Amazon ECR..."
           docker push ${ECR_REGISTRY}/${SERVICE_NAME}:${{ env.COMMIT_SHA }}
           docker push ${ECR_REGISTRY}/${SERVICE_NAME}:latest
+
+      - name: Set up Kustomize
+        uses: imranismail/setup-kustomize@v3
+        with: 
+          kustomize-version: "5.3.0"
+
+      - name: Update Image Tag in Repo (Gitops Manifests)
+        env:
+          GITOPS_PAT: ${{ secrets.GITOPS_REPO_PAT }}
+          GITHUB_USER: "Shantanu-358"
+          GITHUB_REPO: "gitops-manifests"
+          SERVICE_NAME: ${{ matrix.name }}
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        run: |
+          # 1. Clone Repo 3
+          git clone https://${GITHUB_USER}:${GITOPS_PAT}@github.com/${GITHUB_USER}/${GITOPS_REPO}.git gitops-dir
+          cd gitops-dir
+
+          # 2. Configure Git identity
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # 3. Update image tag using kustomize in the service's directory
+          cd apps/${SERVICE_NAME}
+          kustomize edit set image ${ECR_REGISTRY}/${SERVICE_NAME}=${ECR_REGISTRY}/${SERVICE_NAME}:${{ env.COMMIT_SHA }}
+
+          # 4. Check for changes, commit, and push back to Repo 3
+          cd ../..
+          git add apps/${SERVICE_NAME}/kustomization.yaml
+
+          if ! git diff --staged --quiet; then
+            git commit -m "chore(ci): update ${SERVICE_NAME} image tag to ${COMMIT_SHA}"
+            git pull --rebase origin main
+            git push origin main
+            echo "Successfully updated ${SERVICE_NAME} image tag in Repo 3 to ${COMMIT_SHA}"
+          else
+            echo "No manifest changes to commit."
+          fi
