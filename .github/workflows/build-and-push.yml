@@ -107,7 +107,7 @@ jobs:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
         run: |
           # 1. Clone Repo 3
-          git clone https://${GITHUB_USER}:${GITOPS_PAT}@github.com/${GITHUB_USER}/${GITOPS_REPO}.git gitops-dir
+          git clone https://${GITHUB_USER}:${GITOPS_PAT}@github.com/${GITHUB_USER}/${GITHUB_REPO}.git gitops-dir
           cd gitops-dir
 
           # 2. Configure Git identity
