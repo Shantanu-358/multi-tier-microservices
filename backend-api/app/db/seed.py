@@ -8,9 +8,6 @@ from app.core.security import get_password_hash
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Valid bcrypt hash for password123
-DEMO_PASSWORD_HASH = "$2b$12$XAumlkoI0HwyLyP2WaZ9xextXrk5Ql33xDzYIl2zvNJ4hN1uI5H2C"
-
 def seed_database(db: Session) -> None:
     # 1. System Status
     existing_status = db.query(SystemStatus).filter_by(service_name="database").first()
@@ -25,18 +22,20 @@ def seed_database(db: Session) -> None:
     # 2. Users
     alice = db.query(User).filter_by(email="alice@example.com").first()
     if not alice:
+        default_hash = get_password_hash("password123")
         users = [
-            User(email="alice@example.com", hashed_password=DEMO_PASSWORD_HASH),
-            User(email="bob@example.com", hashed_password=DEMO_PASSWORD_HASH),
-            User(email="charlie@example.com", hashed_password=DEMO_PASSWORD_HASH),
+            User(email="alice@example.com", hashed_password=default_hash),
+            User(email="bob@example.com", hashed_password=default_hash),
+            User(email="charlie@example.com", hashed_password=default_hash),
         ]
         db.add_all(users)
         db.flush()
         logger.info(f"Seeded {len(users)} users.")
     else:
         # Update existing user passwords to valid bcrypt hash
+        default_hash = get_password_hash("password123")
         for u in db.query(User).all():
-            u.hashed_password = DEMO_PASSWORD_HASH
+            u.hashed_password = default_hash
         logger.info("Updated existing user password hashes to valid bcrypt hash.")
 
     # 3. Products

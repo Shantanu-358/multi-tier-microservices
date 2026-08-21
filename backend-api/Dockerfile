@@ -5,7 +5,10 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY app/ ./app/
+RUN groupadd -g 10001 appgroup && \
+    useradd -u 10001 -g appgroup -m -s /bin/bash appuser
+
+COPY --chown=appuser:appgroup app/ ./app/
 
 EXPOSE 8000
 
