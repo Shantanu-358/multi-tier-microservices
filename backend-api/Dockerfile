@@ -1,4 +1,4 @@
-FROM cgr.dev/chainguard/python:latest-dev AS builder
+FROM python:3.12-slim AS builder
 
 WORKDIR /app
 
