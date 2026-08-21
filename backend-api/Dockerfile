@@ -9,6 +9,8 @@ ENV PATH="/app/venv/bin:$PATH"
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+RUN pip install --no-cache-dir --upgrade msgpack>=1.2.1 setuptools>=78.1.1
+
 # --- Distroless Runtime (0 CVEs) ---
 FROM cgr.dev/chainguard/python:latest
 
