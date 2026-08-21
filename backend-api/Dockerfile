@@ -3,13 +3,15 @@ FROM cgr.dev/chainguard/python:latest-dev AS builder
 WORKDIR /app
 
 # 1. Create a virtual environment to cleanly isolate your packages
-RUN python -m venv /app/venv
+RUN python -m venv /app/venv --without-pip
 ENV PATH="/app/venv/bin:$PATH"
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN curl -sS https://bootstrap.pypa.io/get-pip.py | /app/venv/bin/python
 
-RUN pip install --no-cache-dir --upgrade msgpack>=1.2.1 setuptools>=78.1.1
+RUN /app/venv/bin/pip install --no-cache-dir -U "setuptools>=78.1.1" "msgpack>=1.2.1"
+
+COPY requirements.txt .
+RUN /app/venv/bin/pip install --no-cache-dir --no-deps -r requirements.txt
 
 # --- Distroless Runtime (0 CVEs) ---
 FROM cgr.dev/chainguard/python:latest
