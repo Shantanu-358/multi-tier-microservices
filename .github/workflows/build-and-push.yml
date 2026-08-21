@@ -20,8 +20,16 @@ jobs:
       services: ${{ steps.filter.outputs.changes }}
       
     steps:
-      - name: Checkout code
+      - name: Checkout code with full history
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run Gitleaks Secret Scanner
+        uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_ENABLE_COMMENTS: true
         
       - name: Detect Changes
         id: filter
@@ -45,6 +53,7 @@ jobs:
     permissions:
       id-token: write
       contents: read
+      security-events: write
 
     strategy:
       fail-fast: false # If one service fails, let the others finish building
@@ -55,18 +64,10 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Debug OIDC Sub Claim
-        run: |
-          # Fetch the raw JWT token from GitHub's OIDC provider
-          ACTIONS_ID_TOKEN=$(curl -s -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=sts.amazonaws.com" | jq -r '.value')
-          # Decode the payload without needing secret keys
-          echo "Your exact token payload:"
-          echo "$ACTIONS_ID_TOKEN" | jq -R 'split(".") | .[1] | @base64d | fromjson'
-
       - name: Configure AWS Credentials via OIDC
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::526727148285:role/GitHubActionsTerraformRole
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
           aws-region: ${{ env.AWS_REGION }}
       
       - name: Login to Amazon ECR
@@ -77,7 +78,13 @@ jobs:
         id: vars
         run: echo "COMMIT_SHA=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
 
-      - name: Build and Push Docker Image
+      # --- SAST: Static Application Security Testing ---
+      - name: Run Semgrep SAST Scan
+        run: |
+          python3 -m pip install semgrep
+          semgrep scan --config auto --error ./${{ matrix.service }}
+
+      - name: Build Docker Image
         env: 
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           SERVICE_NAME: ${{ matrix.service }}
@@ -89,7 +96,30 @@ jobs:
             -t ${ECR_REGISTRY}/${SERVICE_NAME}:${{ env.COMMIT_SHA }} \
             -t ${ECR_REGISTRY}/${SERVICE_NAME}:latest ${BUILD_CONTEXT}
 
-          echo "Pushing ${SERVICE_NAME} to Amazon ECR..."
+      # --- SBOM: Software Bill of Materials ---
+      - name: Generate CycloneDX SBOM with Syft
+        uses: anchore/sbom-action@v0.24.0
+        with:
+          image: ${{ steps.login-ecr.outputs.registry }}/${{ matrix.service }}:${{ env.COMMIT_SHA }}
+          format: cyclonedx-json
+          output-file: sbom-${{ matrix.service }}.json
+
+      - name: Run Trivy Vulnerability scanner
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ${{ steps.login-ecr.outputs.registry }}/${{ matrix.service }}:${{ env.COMMIT_SHA }}
+          format: 'table'
+          exit-code: '1'
+          ignore-unfixed: true
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH'
+
+      - name: Push Docker Image
+        env: 
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          SERVICE_NAME: ${{ matrix.service }}
+        run: |
+          echo "Vulnerability scan passed. Pushing ${SERVICE_NAME} to ECR..."
           docker push ${ECR_REGISTRY}/${SERVICE_NAME}:${{ env.COMMIT_SHA }}
           docker push ${ECR_REGISTRY}/${SERVICE_NAME}:latest
 
