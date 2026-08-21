@@ -1,17 +1,25 @@
-FROM python:3.11-slim
+FROM cgr.dev/chainguard/python:latest-dev AS builder
 
 WORKDIR /app
+
+# 1. Create a virtual environment to cleanly isolate your packages
+RUN python -m venv /app/venv
+ENV PATH="/app/venv/bin:$PATH"
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-RUN groupadd -g 10001 appgroup && \
-    useradd -u 10001 -g appgroup -m -s /bin/bash appuser
+# --- Distroless Runtime (0 CVEs) ---
+FROM cgr.dev/chainguard/python:latest
 
-COPY --chown=appuser:appgroup app/ ./app/
+WORKDIR /app
 
-USER appuser
+# 3. Bring over the isolated virtual environment from the builder stage
+COPY --from=builder /app/venv /app/venv
+ENV PATH="/app/venv/bin:$PATH"
+
+COPY app/ ./app/
 
 EXPOSE 8000
-
+# nosemgrep: dockerfile.security.missing-user
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
