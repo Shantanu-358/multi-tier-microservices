@@ -1,4 +1,4 @@
-FROM cgr.dev/chainguard/python:latest AS builder
+FROM cgr.dev/chainguard/python:latest-dev AS builder
 
 WORKDIR /app
 
