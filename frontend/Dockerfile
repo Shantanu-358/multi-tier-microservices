@@ -10,12 +10,8 @@ COPY . .
 ENV VITE_API_URL=""
 RUN npm run build
 
-FROM caddy:2-alpine
+FROM cgr.dev/chainguard/nginx:latest
 
-COPY --chown=caddy:caddy --from=build /app/dist /usr/share/caddy
+COPY --from=build /app/dist /usr/share/nginx/html
 
-USER caddy
-
-EXPOSE 80
-
-CMD ["caddy", "file-server", "--root", "/usr/share/caddy"]
+EXPOSE 8080
